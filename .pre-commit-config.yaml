@@ -28,7 +28,7 @@ repos:
           - --ignore=F841 # Ignore unused variables
       - id: ruff-format # This is the formatter
         args:
-          - --line-length=99
+          - --line-length=119
 
   # Jupyter notebook cell output clearing
   - repo: https://github.com/kynan/nbstripout

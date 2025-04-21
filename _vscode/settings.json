@@ -7,7 +7,7 @@
             "source.organizeImports": "explicit"
         }
     },
-    "ruff.lineLength": 99,
+    "ruff.lineLength": 119,
     "ruff.lint.ignore": [
         "F401", // Ignore unused imports
         "F841", // Ignore unused variables
