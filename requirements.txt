@@ -5,6 +5,7 @@ matplotlib==3.9.*
 datasets==3.5.*
 transformers==4.48.*
 diffusers==0.32.*
+peft==0.15.*
 accelerate==1.5.*
 lightning==2.5.*
 tensorboard==2.19.*
