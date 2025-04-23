@@ -2,4 +2,5 @@
 /.vscode/
 
 # Other ignores follow here
+*__pycache__
 /lightning_logs/
