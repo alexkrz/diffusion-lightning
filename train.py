@@ -1,14 +1,43 @@
-# Example from https://lightning.ai/lightning-ai/studios/train-a-diffusion-model-with-pytorch-lightning?section=featured
-from jsonargparse import CLI
+from typing import Optional
+
+from jsonargparse import CLI, Namespace
 from lightning import Trainer
 from torch.utils.data import DataLoader, Dataset
+from transformers import AutoTokenizer
 
 from src.datamodule import DiffusionData, DreamBoothDataset, collate_fn
 from src.pl_module import DiffusionModel
 
 
+def parse_args(
+    pretrained_model_name_or_path: str = "stable-diffusion-v1-5/stable-diffusion-v1-5",
+    instance_data_dir: str = "./data/dog",
+    instance_promt: str = "a photo of sks dog",
+    resolution: int = 512,
+    revision: Optional[str] = None,
+    pre_computed_text_embebeddings: Optional[str] = None,
+    class_prompt: Optional[str] = None,
+):
+    """Script to train a diffusion model with Dreambooth and LoRA."""
+    args = Namespace(locals())
+    return args
+
+
 def main(args):
+    # Make some assertions
+    assert args.pre_computed_text_embebeddings is None
+    pre_computed_encoder_hidden_states = None
+    assert args.class_prompt is None
+    pre_computed_class_prompt_encoder_hidden_states = None
+
     # Dataset and DataLoaders creation:
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        use_fast=False,
+    )
+
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
@@ -38,4 +67,5 @@ def main(args):
 
 
 if __name__ == "__main__":
-    CLI(main, as_positional=False)
+    args = CLI(parse_args, as_positional=False)
+    main(args)

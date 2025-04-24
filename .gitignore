@@ -1,6 +1,9 @@
 # We do not want to enforce our vscode settings
 /.vscode/
 
+# Data
+/data/
+
 # Other ignores follow here
 *__pycache__
 /lightning_logs/
