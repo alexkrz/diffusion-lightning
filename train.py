@@ -1,64 +1,17 @@
-from typing import Optional
+import jsonargparse
+from lightning import LightningDataModule, LightningModule, Trainer
 
-from jsonargparse import CLI, Namespace
-from lightning import Trainer
-from torch.utils.data import DataLoader, Dataset
-from transformers import AutoTokenizer
-
-from src.datamodule import DiffusionData, DreamBoothDataset, collate_fn
+from src.datamodule import DiffusionData, DreamBoothDatamodule
 from src.pl_module import DiffusionModel
 
 
-def parse_args(
-    pretrained_model_name_or_path: str = "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    instance_data_dir: str = "./data/dog",
-    instance_promt: str = "a photo of sks dog",
-    resolution: int = 512,
-    revision: Optional[str] = None,
-    pre_computed_text_embebeddings: Optional[str] = None,
-    class_prompt: Optional[str] = None,
-):
-    """Script to train a diffusion model with Dreambooth and LoRA."""
-    args = Namespace(locals())
-    return args
+def process_parser_args(parser: jsonargparse.ArgumentParser):
+    cfg = parser.parse_args()
+    return cfg
 
 
-def main(args):
-    # Make some assertions
-    assert args.pre_computed_text_embebeddings is None
-    pre_computed_encoder_hidden_states = None
-    assert args.class_prompt is None
-    pre_computed_class_prompt_encoder_hidden_states = None
-
-    # Dataset and DataLoaders creation:
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=args.revision,
-        use_fast=False,
-    )
-
-    train_dataset = DreamBoothDataset(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
-        class_num=args.num_class_images,
-        tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
-        encoder_hidden_states=pre_computed_encoder_hidden_states,
-        class_prompt_encoder_hidden_states=pre_computed_class_prompt_encoder_hidden_states,
-        tokenizer_max_length=args.tokenizer_max_length,
-    )
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=args.train_batch_size,
-        shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
-        num_workers=args.dataloader_num_workers,
-    )
+def main(cfg):
+    datamodule = DreamBoothDatamodule(**cfg.datamodule)
 
     model = DiffusionModel()
     data = DiffusionData()
@@ -67,5 +20,27 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = CLI(parse_args, as_positional=False)
-    main(args)
+    from jsonargparse import ActionConfigFile, ArgumentParser
+
+    parser = ArgumentParser(parser_mode="omegaconf")
+    parser.add_argument("--config", action=ActionConfigFile)
+    parser.add_argument("--seed", type=int, default=42)
+    # parser.add_argument("--datamodule", type=DreamBoothDatamodule)
+    # parser.add_argument("--pl_module", type=LightningModule)
+    # parser.add_argument("--trainer", type=Trainer)
+    parser.add_class_arguments(
+        DreamBoothDatamodule,
+        "datamodule",
+        default={
+            "pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            "instance_data_root": "./data/dog",
+            "instance_prompt": "a photo of sks dog",
+        },
+    )
+
+    cfg = process_parser_args(parser)
+
+    # datamodule = parser.instantiate_classes({"datamodule": cfg.datamodule}).datamodule
+    # pl_module = parser.instantiate_classes({"pl_module": cfg.pl_module}).pl_module
+
+    main(cfg)
