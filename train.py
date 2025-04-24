@@ -11,7 +11,7 @@ from src.pl_module import DiffusionModel
 
 
 @dataclass
-class Config:
+class Args:
     """CLI for training a diffusion model using Dreambooth and LoRA."""
 
     pretrained_model_name_or_path: str = "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -23,22 +23,22 @@ class Config:
     dataloader_num_workers: int = 0
 
 
-def main(cfg: Config):
+def main(args: Args):
     # Dataset and DataLoaders creation:
     tokenizer = AutoTokenizer.from_pretrained(
-        cfg.pretrained_model_name_or_path,
+        args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         use_fast=False,
     )
 
     train_dataset = DreamBoothDataset(
-        instance_data_root=cfg.instance_data_dir,
-        instance_prompt=cfg.instance_prompt,
+        instance_data_root=args.instance_data_dir,
+        instance_prompt=args.instance_prompt,
         tokenizer=tokenizer,
         class_data_root=None,
         class_prompt=None,
         class_num=None,
-        size=cfg.resolution,
+        size=args.resolution,
         center_crop=False,
         encoder_hidden_states=None,
         class_prompt_encoder_hidden_states=None,
@@ -47,10 +47,10 @@ def main(cfg: Config):
 
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=cfg.train_batch_size,
+        batch_size=args.train_batch_size,
         shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples, cfg.with_prior_preservation),
-        num_workers=cfg.dataloader_num_workers,
+        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
+        num_workers=args.dataloader_num_workers,
     )
 
     model = DiffusionModel()
@@ -60,5 +60,5 @@ def main(cfg: Config):
 
 
 if __name__ == "__main__":
-    cfg = CLI(Config, as_positional=False)
-    main(cfg)
+    args = CLI(Args, as_positional=False)
+    main(args)
