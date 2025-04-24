@@ -1,0 +1,7 @@
+pretrained_model_name_or_path: stable-diffusion-v1-5/stable-diffusion-v1-5
+instance_data_dir: ./data/dog
+instance_prompt: a photo of sks dog
+resolution: 512
+with_prior_preservation: false
+train_batch_size: 4
+dataloader_num_workers: 0
