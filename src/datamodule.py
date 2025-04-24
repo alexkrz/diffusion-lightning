@@ -7,7 +7,6 @@ from PIL import Image
 from PIL.ImageOps import exif_transpose
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-from transformers import AutoTokenizer
 
 
 class DiffusionData(L.LightningDataModule):
@@ -214,51 +213,3 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     prompt_embeds = prompt_embeds[0]
 
     return prompt_embeds
-
-
-class DreamBoothDatamodule(L.LightningDataModule):
-    def __init__(
-        self,
-        pretrained_model_name_or_path: str,
-        instance_data_root: str,
-        instance_prompt: str,
-        resolution: int = 512,
-        with_prior_preservation: bool = False,
-        train_batch_size: int = 4,
-        dataloader_num_workers: int = 0,
-    ):
-        super().__init__()
-        self.save_hyperparameters()
-
-    def setup(self, stage):
-        print(f"Preparing data for stage {stage}..")
-
-        tokenizer = AutoTokenizer.from_pretrained(
-            self.hparams.pretrained_model_name_or_path,
-            subfolder="tokenizer",
-            revision=None,
-            use_fast=False,
-        )
-
-        self.train_dataset = DreamBoothDataset(
-            self.hparams.instance_data_root,
-            self.hparams.instance_prompt,
-            tokenizer,
-            class_data_root=None,
-            class_prompt=None,
-            class_num=None,
-            size=self.hparams.resolution,
-            center_crop=False,
-            encoder_hidden_states=None,
-            class_prompt_encoder_hidden_states=None,
-            tokenizer_max_length=None,
-        )
-
-    def train_dataloader(self):
-        return DataLoader(
-            dataset=self.train_dataset,
-            batch_size=self.hparams.train_batch_size,
-            shuffle=True,
-            collate_fn=lambda examples: collate_fn(examples, self.hparams.with_prior_preservation),
-            num_workers=self.hparams.dataloader_num_workers,
-        )
