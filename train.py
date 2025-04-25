@@ -1,9 +1,12 @@
 import logging
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import diffusers
+import torch
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -17,6 +20,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from jsonargparse import CLI
+from peft import LoraConfig
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer, CLIPTextModel, PretrainedConfig
 
@@ -40,6 +44,18 @@ class Args:
     dataloader_num_workers: int = 0
     gradient_accumulation_steps: int = 1
     seed: int = 42
+    lora_rank: int = 4
+    learning_rate: float = 5e-4
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.999
+    adam_weight_decay: float = 1e-2
+    adam_epsilon: float = 1e-08
+    lr_warmup_steps: int = 500
+    max_train_steps: Optional[int] = None
+    num_train_epochs: int = 1
+    lr_scheduler: str = "constant"
+    lr_num_cycles: int = 1
+    lr_power: float = 1.0
 
 
 def main(args: Args):
@@ -123,6 +139,60 @@ def main(args: Args):
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
+
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device, dtype=weight_dtype)
+
+    # now we will add new LoRA weights to the attention layers
+    unet_lora_config = LoraConfig(
+        r=args.lora_rank,
+        lora_alpha=args.lora_rank,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"],
+    )
+    unet.add_adapter(unet_lora_config)
+
+    # Optimizer creation
+    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
+
+    optimizer = torch.optim.AdamW(
+        params_to_optimize,
+        lr=args.learning_rate,
+        betas=(args.adam_beta1, args.adam_beta2),
+        weight_decay=args.adam_weight_decay,
+        eps=args.adam_epsilon,
+    )
+
+    # Scheduler and math around the number of training steps.
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
+    if args.max_train_steps is None:
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
+
+    lr_scheduler = diffusers.optimization.get_scheduler(
+        args.lr_scheduler,
+        optimizer=optimizer,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
+        num_cycles=args.lr_num_cycles,
+        power=args.lr_power,
+    )
 
 
 if __name__ == "__main__":
