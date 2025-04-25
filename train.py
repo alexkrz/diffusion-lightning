@@ -21,9 +21,12 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
+from diffusers.utils import convert_state_dict_to_diffusers
 from diffusers.utils.torch_utils import is_compiled_module
 from jsonargparse import CLI
 from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, PretrainedConfig
@@ -67,6 +70,7 @@ class Config:
     checkpoints_total_limit: Optional[int] = None
     validation_prompt: Optional[str] = None
     validation_epochs: int = 50
+    num_validation_images: int = 4
 
 
 def main(args: Config):
@@ -393,6 +397,50 @@ def main(args: Config):
                     epoch,
                     torch_dtype=weight_dtype,
                 )
+
+    # NOTE: End training
+    # Save the lora layers
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        unet = unwrap_model(unet)
+        unet = unet.to(torch.float32)
+
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
+
+        text_encoder_state_dict = None
+
+        StableDiffusionLoraLoaderMixin.save_lora_weights(
+            save_directory=args.output_dir,
+            unet_lora_layers=unet_lora_state_dict,
+            text_encoder_lora_layers=text_encoder_state_dict,
+        )
+
+        # Final inference
+        # Load previous pipeline
+        pipeline = DiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            torch_dtype=weight_dtype,
+        )
+
+        # load attention processors
+        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.safetensors")
+
+        # run inference
+        images = []
+        if args.validation_prompt and args.num_validation_images > 0:
+            pipeline_args = {"prompt": args.validation_prompt, "num_inference_steps": 25}
+            images = log_validation(
+                logger,
+                pipeline,
+                args,
+                accelerator,
+                pipeline_args,
+                epoch,
+                is_final_validation=True,
+                torch_dtype=weight_dtype,
+            )
+
+    accelerator.end_training()
 
 
 if __name__ == "__main__":
