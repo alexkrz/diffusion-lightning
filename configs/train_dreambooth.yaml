@@ -27,3 +27,4 @@ checkpointing_steps: 500
 checkpoints_total_limit: null
 validation_prompt: null
 validation_epochs: 50
+num_validation_images: 4

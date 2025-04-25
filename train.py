@@ -286,7 +286,7 @@ def main(args: Config):
                     text_encoder,
                     batch["input_ids"],
                     batch["attention_mask"],
-                    text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
+                    text_encoder_use_attention_mask=None,
                 )
 
                 if unwrap_model(unet).config.in_channels == channels * 2:
