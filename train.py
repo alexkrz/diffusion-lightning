@@ -31,7 +31,8 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, PretrainedConfig
 
-from src.datamodule import DreamBoothDataset, collate_fn, encode_prompt
+from src.datamodule import DreamBoothDataset, collate_fn
+from src.pl_module import encode_prompt
 from src.utils import log_validation
 
 logger = get_logger(__name__)
