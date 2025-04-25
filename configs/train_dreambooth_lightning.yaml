@@ -1,0 +1,64 @@
+seed: 42
+datamodule:
+  pretrained_model_name_or_path: stable-diffusion-v1-5/stable-diffusion-v1-5
+  instance_data_root: ./data/dog
+  instance_prompt: a photo of sks dog
+  resolution: 512
+  with_prior_preservation: false
+  train_batch_size: 4
+  dataloader_num_workers: 0
+pl_module:
+  lora_rank: 4
+  learning_rate: 0.0005
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 0.01
+  adam_epsilon: 1.0e-08
+  lr_scheduler: constant
+  lr_warmup_steps: 500
+  lr_training_steps: 2
+  lr_num_cycles: 1
+  lr_power: 1.0
+  with_prior_preservation: false
+  prior_loss_weight: 1.0
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: null
+  logger: null
+  callbacks: null
+  fast_dev_run: false
+  max_epochs: 5
+  min_epochs: null
+  max_steps: -1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  overfit_batches: 0.0
+  val_check_interval: null
+  check_val_every_n_epoch: 1
+  num_sanity_val_steps: null
+  log_every_n_steps: 1
+  enable_checkpointing: null
+  enable_progress_bar: null
+  enable_model_summary: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
+  deterministic: null
+  benchmark: null
+  inference_mode: true
+  use_distributed_sampler: true
+  profiler: null
+  detect_anomaly: false
+  barebones: false
+  plugins: null
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+  default_root_dir: null
+  model_registry: null

@@ -140,6 +140,7 @@ class LatentDiffusionModule(L.LightningModule):
         else:
             raise ValueError(f"Unknown prediction type {self.noise_scheduler.config.prediction_type}")
 
+        # TODO: Check what else to adjust when training with prior_preservation
         if self.hparams.with_prior_preservation:
             # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
             model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
