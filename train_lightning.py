@@ -1,6 +1,11 @@
+from pathlib import Path
+
 import jsonargparse
 import lightning as L
+import torch
 from lightning import Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint
+from safetensors.torch import save_file
 
 from src.datamodule import DreamBoothDatamodule
 from src.pl_module import LatentDiffusionModule
@@ -13,11 +18,23 @@ def main(cfg: jsonargparse.Namespace):
 
     pl_module = LatentDiffusionModule(**cfg.pl_module)
 
-    trainer = Trainer(**cfg.trainer)
+    # Modify checkpoint callback
+    cfg_callbacks = cfg.trainer.pop("callbacks")
+    cp_callback = ModelCheckpoint(
+        save_weights_only=True,
+    )
+
+    trainer = Trainer(**cfg.trainer, callbacks=[cp_callback])
+
+    print(f"Writing logs to {trainer.log_dir}")
 
     trainer.fit(model=pl_module, datamodule=datamodule)
 
-    # TODO: Save LoRA weights after training
+    # Convert last checkpoint to safetensors after training
+    print("Best model:", cp_callback.best_model_path)
+    ckpt = torch.load(cp_callback.best_model_path, weights_only=True)
+    state_dict = ckpt["state_dict"]
+    save_file(state_dict, Path(trainer.log_dir) / "lora_weights.safetensors")
 
 
 if __name__ == "__main__":
@@ -45,7 +62,7 @@ if __name__ == "__main__":
         default={
             "max_epochs": 5,
             "log_every_n_steps": 1,
-            "enable_checkpointing": False,
+            "enable_checkpointing": True,
         },
     )
 

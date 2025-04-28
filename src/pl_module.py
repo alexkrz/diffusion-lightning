@@ -3,7 +3,9 @@ import lightning as L
 import torch
 import torch.nn.functional as F
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from diffusers.utils import convert_state_dict_to_diffusers
 from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from transformers import CLIPTextModel
 
 
@@ -182,3 +184,8 @@ class LatentDiffusionModule(L.LightningModule):
         )
 
         return [optimizer], [lr_scheduler]
+
+    def on_save_checkpoint(self, checkpoint):
+        # Only save the LoRA weights
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(self.unet))
+        checkpoint["state_dict"] = unet_lora_state_dict
