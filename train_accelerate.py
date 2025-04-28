@@ -1,3 +1,4 @@
+import gc
 import logging
 import math
 import os
@@ -22,8 +23,10 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import StableDiffusionLoraLoaderMixin
+from diffusers.training_utils import free_memory
 from diffusers.utils import convert_state_dict_to_diffusers
 from diffusers.utils.torch_utils import is_compiled_module
+from huggingface_hub.utils import insecure_hashlib
 from jsonargparse import CLI
 from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
@@ -31,7 +34,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, CLIPTextModel, PretrainedConfig
 
-from src.datamodule import DreamBoothDataset, collate_fn
+from src.datamodule import DreamBoothDataset, PromptDataset, collate_fn, tokenize_prompt
 from src.pl_module import encode_prompt
 from src.utils import log_validation
 
@@ -49,10 +52,15 @@ class Config:
     output_dir: str = "checkpoints"
     logging_dir: str = "logs"
     resolution: int = 512
-    with_prior_preservation: bool = False
-    prior_loss_weight: float = 1.0
+    center_crop: bool = False
     train_batch_size: int = 4
     dataloader_num_workers: int = 0
+    with_prior_preservation: bool = False
+    class_data_dir: str = "./data/dog"
+    num_class_images: int = 100
+    class_prompt: str = "a photo of a dog"
+    sample_batch_size: int = 4
+    prior_loss_weight: float = 1.0
     gradient_accumulation_steps: int = 1
     lora_rank: int = 4
     learning_rate: float = 5e-4
@@ -60,6 +68,8 @@ class Config:
     adam_beta2: float = 0.999
     adam_weight_decay: float = 1e-2
     adam_epsilon: float = 1e-08
+    pre_compute_text_embeddings: bool = False
+    tokenizer_max_length: Optional[int] = None
     lr_warmup_steps: int = 500
     max_train_steps: Optional[int] = None
     num_train_epochs: int = 1
@@ -107,33 +117,49 @@ def main(args: Config):
     if args.seed is not None:
         set_seed(args.seed)
 
+    # Generate class images if prior preservation is enabled.
+    if args.with_prior_preservation:
+        class_images_dir = Path(args.class_data_dir)
+        if not class_images_dir.exists():
+            class_images_dir.mkdir(parents=True)
+        cur_class_images = len(list(class_images_dir.iterdir()))
+
+        if cur_class_images < args.num_class_images:
+            torch_dtype = torch.float16 if accelerator.device.type in ("cuda", "xpu") else torch.float32
+            pipeline = DiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
+            )
+            pipeline.set_progress_bar_config(disable=True)
+
+            num_new_images = args.num_class_images - cur_class_images
+            logger.info(f"Number of class images to sample: {num_new_images}.")
+
+            sample_dataset = PromptDataset(args.class_prompt, num_new_images)
+            sample_dataloader = DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+
+            sample_dataloader = accelerator.prepare(sample_dataloader)
+            pipeline.to(accelerator.device)
+
+            for example in tqdm(
+                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+            ):
+                images = pipeline(example["prompt"]).images
+
+                for i, image in enumerate(images):
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
+                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    image.save(image_filename)
+
+            del pipeline
+            free_memory()
+
     # Set up data
     tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         use_fast=False,
-    )
-
-    train_dataset = DreamBoothDataset(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        tokenizer=tokenizer,
-        class_data_root=None,
-        class_prompt=None,
-        class_num=None,
-        size=args.resolution,
-        center_crop=False,
-        encoder_hidden_states=None,
-        class_prompt_encoder_hidden_states=None,
-        tokenizer_max_length=None,
-    )
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=args.train_batch_size,
-        shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
-        num_workers=args.dataloader_num_workers,
     )
 
     # Set up model
@@ -192,6 +218,67 @@ def main(args: Config):
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
+    )
+
+    if args.pre_compute_text_embeddings:
+
+        def compute_text_embeddings(prompt):
+            with torch.no_grad():
+                text_inputs = tokenize_prompt(tokenizer, prompt, tokenizer_max_length=args.tokenizer_max_length)
+                prompt_embeds = encode_prompt(
+                    text_encoder,
+                    text_inputs.input_ids,
+                    text_inputs.attention_mask,
+                    text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
+                )
+
+            return prompt_embeds
+
+        pre_computed_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+        validation_prompt_negative_prompt_embeds = compute_text_embeddings("")
+
+        if args.validation_prompt is not None:
+            validation_prompt_encoder_hidden_states = compute_text_embeddings(args.validation_prompt)
+        else:
+            validation_prompt_encoder_hidden_states = None
+
+        if args.class_prompt is not None:
+            pre_computed_class_prompt_encoder_hidden_states = compute_text_embeddings(args.class_prompt)
+        else:
+            pre_computed_class_prompt_encoder_hidden_states = None
+
+        text_encoder = None
+        tokenizer = None
+
+        gc.collect()
+        free_memory()
+    else:
+        pre_computed_encoder_hidden_states = None
+        validation_prompt_encoder_hidden_states = None
+        validation_prompt_negative_prompt_embeds = None
+        pre_computed_class_prompt_encoder_hidden_states = None
+
+    # Dataset and DataLoaders creation:
+    train_dataset = DreamBoothDataset(
+        instance_data_root=args.instance_data_dir,
+        instance_prompt=args.instance_prompt,
+        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+        class_prompt=args.class_prompt,
+        class_num=args.num_class_images,
+        tokenizer=tokenizer,
+        size=args.resolution,
+        center_crop=args.center_crop,
+        encoder_hidden_states=pre_computed_encoder_hidden_states,
+        class_prompt_encoder_hidden_states=pre_computed_class_prompt_encoder_hidden_states,
+        tokenizer_max_length=args.tokenizer_max_length,
+    )
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=args.train_batch_size,
+        shuffle=True,
+        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
+        num_workers=args.dataloader_num_workers,
     )
 
     # Scheduler and math around the number of training steps.
