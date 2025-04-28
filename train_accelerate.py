@@ -42,7 +42,7 @@ logger = get_logger(__name__)
 class Config:
     """CLI for training a diffusion model using Dreambooth and LoRA."""
 
-    seed: Optional[int] = None
+    seed: Optional[int] = 42
     pretrained_model_name_or_path: str = "stable-diffusion-v1-5/stable-diffusion-v1-5"
     instance_data_dir: str = "./data/dog"
     instance_prompt: str = "a photo of sks dog"
