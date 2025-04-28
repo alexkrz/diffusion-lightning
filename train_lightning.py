@@ -11,7 +11,8 @@ from src.datamodule import DreamBoothDatamodule
 from src.pl_module import LatentDiffusionModule
 
 
-def main(cfg: jsonargparse.Namespace):
+def main(parser: jsonargparse.ArgumentParser):
+    cfg = parser.parse_args()
     L.seed_everything(cfg.seed)
 
     datamodule = DreamBoothDatamodule(**cfg.datamodule)
@@ -28,6 +29,8 @@ def main(cfg: jsonargparse.Namespace):
     trainer = Trainer(**cfg.trainer, callbacks=[cp_callback])
 
     print(f"Writing logs to {trainer.log_dir}")
+    Path(trainer.log_dir).mkdir(parents=True)
+    parser.save(cfg, Path(trainer.log_dir) / "config.yaml")
 
     trainer.fit(model=pl_module, datamodule=datamodule)
 
@@ -67,5 +70,4 @@ if __name__ == "__main__":
         },
     )
 
-    cfg = parser.parse_args()
-    main(cfg)
+    main(parser)

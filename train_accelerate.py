@@ -118,6 +118,7 @@ def main(args: Config):
         set_seed(args.seed)
 
     # Generate class images if prior preservation is enabled.
+    # TODO: How are the class images actually used? -> They are used inside the dataset
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
         if not class_images_dir.exists():
