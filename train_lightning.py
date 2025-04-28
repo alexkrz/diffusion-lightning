@@ -22,6 +22,7 @@ def main(cfg: jsonargparse.Namespace):
     cfg_callbacks = cfg.trainer.pop("callbacks")
     cp_callback = ModelCheckpoint(
         save_weights_only=True,
+        save_last=True,
     )
 
     trainer = Trainer(**cfg.trainer, callbacks=[cp_callback])
@@ -60,7 +61,7 @@ if __name__ == "__main__":
         Trainer,
         "trainer",
         default={
-            "max_epochs": 5,
+            "max_steps": 200,
             "log_every_n_steps": 1,
             "enable_checkpointing": True,
         },

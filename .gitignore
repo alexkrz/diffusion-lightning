@@ -4,7 +4,12 @@
 # Data
 /data/
 
-# Other ignores follow here
-*__pycache__
+# Logs
 /lightning_logs/
 /checkpoints/
+
+# Results
+/results/
+
+# Other ignores follow here
+*__pycache__

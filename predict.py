@@ -1,0 +1,23 @@
+import torch
+from diffusers import DiffusionPipeline
+from jsonargparse import CLI
+
+
+def main(
+    lora_weights_fp: str = "lightning_logs/version_0/lora_weights.safetensors",
+    prompt: str = "A photo of sks dog in a bucket",
+    save_fp: str = "results/dog-bucket.png",
+):
+    pipe = DiffusionPipeline.from_pretrained(
+        "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        use_safetensors=True,
+    ).to("cuda")
+
+    pipe.load_lora_weights(lora_weights_fp)
+
+    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+    image.save(save_fp)
+
+
+if __name__ == "__main__":
+    CLI(main, as_positional=False)
