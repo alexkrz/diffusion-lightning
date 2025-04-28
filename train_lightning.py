@@ -32,6 +32,9 @@ def main(parser: jsonargparse.ArgumentParser):
     Path(trainer.log_dir).mkdir(parents=True)
     parser.save(cfg, Path(trainer.log_dir) / "config.yaml")
 
+    # Prepare datamodule before calling tainer.fit() to check correct behavior
+    datamodule.setup("fit")
+
     trainer.fit(model=pl_module, datamodule=datamodule)
 
     # Convert last checkpoint to safetensors after training

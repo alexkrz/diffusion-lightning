@@ -219,7 +219,7 @@ class DreamBoothDatamodule(L.LightningDataModule):
         sample_batch_size: int = 4,
         pre_compute_text_embeddings: bool = False,
         tokenizer_max_length: Optional[int] = None,
-        train_batch_size: int = 4,
+        train_batch_size: int = 2,
         dataloader_num_workers: int = 0,
     ):
         super().__init__()

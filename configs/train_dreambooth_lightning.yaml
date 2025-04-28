@@ -1,15 +1,22 @@
 seed: 42
 datamodule:
   pretrained_model_name_or_path: stable-diffusion-v1-5/stable-diffusion-v1-5
-  instance_data_root: ./data/dog
+  instance_data_dir: ./data/instance_images
   instance_prompt: a photo of sks dog
   resolution: 512
-  with_prior_preservation: false
+  center_crop: false
+  with_prior_preservation: true
+  class_data_dir: ./data/class_images
+  num_class_images: 100
+  class_prompt: a photo of a dog
+  sample_batch_size: 4
+  pre_compute_text_embeddings: false
+  tokenizer_max_length: null
   train_batch_size: 2
   dataloader_num_workers: 0
 pl_module:
   lora_rank: 4
-  learning_rate: 1.0e-05
+  learning_rate: 0.0005
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_weight_decay: 0.01
@@ -19,7 +26,6 @@ pl_module:
   lr_training_steps: 2
   lr_num_cycles: 1
   lr_power: 1.0
-  with_prior_preservation: false
   prior_loss_weight: 1.0
 trainer:
   accelerator: auto
@@ -32,7 +38,7 @@ trainer:
   fast_dev_run: false
   max_epochs: null
   min_epochs: null
-  max_steps: 600
+  max_steps: 10
   min_steps: null
   max_time: null
   limit_train_batches: null
