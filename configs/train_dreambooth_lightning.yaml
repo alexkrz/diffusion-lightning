@@ -5,7 +5,7 @@ datamodule:
   instance_prompt: a photo of sks dog
   resolution: 512
   center_crop: false
-  with_prior_preservation: true
+  with_prior_preservation: false
   class_data_dir: ./data/class_images
   num_class_images: 100
   class_prompt: a photo of a dog
@@ -16,13 +16,13 @@ datamodule:
   dataloader_num_workers: 0
 pl_module:
   lora_rank: 4
-  learning_rate: 0.0005
+  learning_rate: 5.0e-05
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_weight_decay: 0.01
   adam_epsilon: 1.0e-08
   lr_scheduler: constant
-  lr_warmup_steps: 500
+  lr_warmup_steps: 300
   lr_training_steps: 2
   lr_num_cycles: 1
   lr_power: 1.0
@@ -38,7 +38,7 @@ trainer:
   fast_dev_run: false
   max_epochs: null
   min_epochs: null
-  max_steps: 10
+  max_steps: 500
   min_steps: null
   max_time: null
   limit_train_batches: null
