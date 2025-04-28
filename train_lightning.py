@@ -17,6 +17,8 @@ def main(cfg: jsonargparse.Namespace):
 
     trainer.fit(model=pl_module, datamodule=datamodule)
 
+    # TODO: Save LoRA weights after training
+
 
 if __name__ == "__main__":
     from jsonargparse import ActionConfigFile, ArgumentParser
@@ -43,6 +45,7 @@ if __name__ == "__main__":
         default={
             "max_epochs": 5,
             "log_every_n_steps": 1,
+            "enable_checkpointing": False,
         },
     )
 
