@@ -1,12 +1,18 @@
 from pathlib import Path
+from typing import Optional
 
 import lightning as L
 import torch
+from accelerate import Accelerator
 from datasets import load_dataset
+from diffusers import DiffusionPipeline
+from diffusers.training_utils import free_memory
+from huggingface_hub.utils import insecure_hashlib
 from PIL import Image
 from PIL.ImageOps import exif_transpose
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
 
@@ -202,15 +208,65 @@ class DreamBoothDatamodule(L.LightningDataModule):
     def __init__(
         self,
         pretrained_model_name_or_path: str,
-        instance_data_root: str,
+        instance_data_dir: str,
         instance_prompt: str,
         resolution: int = 512,
+        center_crop: bool = False,
         with_prior_preservation: bool = False,
+        class_data_dir: str = "./data/class_images",
+        num_class_images: int = 100,
+        class_prompt: str = "a photo of a dog",
+        sample_batch_size: int = 4,
+        pre_compute_text_embeddings: bool = False,
+        tokenizer_max_length: Optional[int] = None,
         train_batch_size: int = 4,
         dataloader_num_workers: int = 0,
     ):
         super().__init__()
         self.save_hyperparameters()
+
+    def prepare_data(self):
+        # Generate class images if prior preservation is enabled.
+        if self.hparams.with_prior_preservation:
+            accelerator = Accelerator()
+            class_images_dir = Path(self.hparams.class_data_dir)
+            if not class_images_dir.exists():
+                class_images_dir.mkdir(parents=True)
+            cur_class_images = len(list(class_images_dir.iterdir()))
+
+            if cur_class_images < self.hparams.num_class_images:
+                print("Generating images on device: ", accelerator.device)
+                torch_dtype = torch.float16 if accelerator.device.type in ("cuda", "xpu") else torch.float32
+                pipeline = DiffusionPipeline.from_pretrained(
+                    self.hparams.pretrained_model_name_or_path,
+                    torch_dtype=torch_dtype,
+                    safety_checker=None,
+                )
+                pipeline.set_progress_bar_config(disable=True)
+
+                num_new_images = self.hparams.num_class_images - cur_class_images
+                print(f"Number of class images to sample: {num_new_images}.")
+
+                sample_dataset = PromptDataset(self.hparams.class_prompt, num_new_images)
+                sample_dataloader = DataLoader(sample_dataset, batch_size=self.hparams.sample_batch_size)
+
+                sample_dataloader = accelerator.prepare(sample_dataloader)
+                pipeline.to(accelerator.device)
+
+                for example in tqdm(
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                ):
+                    images = pipeline(example["prompt"]).images
+
+                    for i, image in enumerate(images):
+                        hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
+                        image_filename = (
+                            class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                        )
+                        image.save(image_filename)
+
+                del pipeline
+                free_memory()
 
     def setup(self, stage):
         print(f"Preparing data for stage {stage}..")
@@ -222,18 +278,26 @@ class DreamBoothDatamodule(L.LightningDataModule):
             use_fast=False,
         )
 
+        if not self.hparams.pre_compute_text_embeddings:
+            pre_computed_encoder_hidden_states = None
+            validation_prompt_encoder_hidden_states = None
+            validation_prompt_negative_prompt_embeds = None
+            pre_computed_class_prompt_encoder_hidden_states = None
+        else:
+            raise NotImplementedError()
+
         self.train_dataset = DreamBoothDataset(
-            self.hparams.instance_data_root,
-            self.hparams.instance_prompt,
-            tokenizer,
-            class_data_root=None,
-            class_prompt=None,
-            class_num=None,
+            instance_data_root=self.hparams.instance_data_dir,
+            instance_prompt=self.hparams.instance_prompt,
+            class_data_root=self.hparams.class_data_dir if self.hparams.with_prior_preservation else None,
+            class_prompt=self.hparams.class_prompt,
+            class_num=self.hparams.num_class_images,
+            tokenizer=tokenizer,
             size=self.hparams.resolution,
-            center_crop=False,
-            encoder_hidden_states=None,
-            class_prompt_encoder_hidden_states=None,
-            tokenizer_max_length=None,
+            center_crop=self.hparams.center_crop,
+            encoder_hidden_states=pre_computed_encoder_hidden_states,
+            class_prompt_encoder_hidden_states=pre_computed_class_prompt_encoder_hidden_states,
+            tokenizer_max_length=self.hparams.tokenizer_max_length,
         )
 
     def train_dataloader(self):

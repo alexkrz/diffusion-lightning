@@ -52,19 +52,23 @@ if __name__ == "__main__":
         "datamodule",
         default={
             "pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-v1-5",
-            "instance_data_root": "./data/dog",
+            "instance_data_dir": "./data/instance_images",
             "instance_prompt": "a photo of sks dog",
+            "with_prior_preservation": True,
+            "class_data_dir": "./data/class_images",
+            "class_prompt": "a photo of a dog",
         },
     )
     parser.add_class_arguments(LatentDiffusionModule, "pl_module")
     parser.link_arguments(
         "datamodule.pretrained_model_name_or_path", "pl_module.pretrained_model_name_or_path", apply_on="parse"
     )
+    parser.link_arguments("datamodule.with_prior_preservation", "pl_module.with_prior_preservation", apply_on="parse")
     parser.add_class_arguments(
         Trainer,
         "trainer",
         default={
-            "max_steps": 200,
+            "max_steps": 10,
             "log_every_n_steps": 1,
             "enable_checkpointing": True,
         },

@@ -47,7 +47,7 @@ class Config:
 
     seed: Optional[int] = 42
     pretrained_model_name_or_path: str = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-    instance_data_dir: str = "./data/dog"
+    instance_data_dir: str = "./data/instance_images"
     instance_prompt: str = "a photo of sks dog"
     output_dir: str = "checkpoints"
     logging_dir: str = "logs"
@@ -56,7 +56,7 @@ class Config:
     train_batch_size: int = 4
     dataloader_num_workers: int = 0
     with_prior_preservation: bool = False
-    class_data_dir: str = "./data/dog"
+    class_data_dir: str = "./data/class_images"
     num_class_images: int = 100
     class_prompt: str = "a photo of a dog"
     sample_batch_size: int = 4
@@ -118,7 +118,6 @@ def main(args: Config):
         set_seed(args.seed)
 
     # Generate class images if prior preservation is enabled.
-    # TODO: How are the class images actually used? -> They are used inside the dataset
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
         if not class_images_dir.exists():
